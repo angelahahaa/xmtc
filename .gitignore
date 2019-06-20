@@ -1,4 +1,5 @@
 /data/
 /Amazon_RawData/
 /reddit/
-
+/.ipynb_checkpoints/
+/archive*
