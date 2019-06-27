@@ -67,7 +67,7 @@ for i,line in enumerate(lines):
     else:
         raise Exception('invalide line {} : {}'.format(i,line))
 
-Print('OBTAIN TEST TRAIN ID..')
+print('OBTAIN TEST TRAIN ID..')
 # read train test id
 traindf = pd.read_csv(
     TRAIN_DIR,
@@ -95,7 +95,7 @@ for id in testid:
     d[id] = data[id]
 
 # create dataframe
-Print('CREATE DATAFRAME..')
+print('CREATE DATAFRAME..')
 df = pd.DataFrame.from_dict(d, orient='index')
 
 # combine name and description with seperator |||
@@ -106,5 +106,5 @@ df = df.drop(columns = ['name','description'])
 print(df['train/test'].value_counts())
 
 # save as pkl
-Print('SAVE DATAFRAME..')
+print('SAVE DATAFRAME..')
 df.to_pickle(OUT_DIR)
