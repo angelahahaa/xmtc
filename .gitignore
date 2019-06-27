@@ -1,5 +1,8 @@
 /data/
 /Amazon_RawData/
+/AmazonCat-13K_mappings/
 /reddit/
 /.ipynb_checkpoints/
+/.DS_Store
+/._.DS_Store
 /archive*
