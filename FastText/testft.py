@@ -1,9 +1,14 @@
 import fasttext
 import re
+import argparse
+parser = argparse.ArgumentParser(description='run FastText')
+parser.add_argument('-m','--model',help='model directory e.g. models/epoch5_lr0.1.bin')
+parser.add_argument('-d','--data',help='data directory e.g. .../data/amazon.test.txt')
+args = parser.parse_args()
 
-MODEL_DIR = 'models/epoch5_lr0.1.bin'
-TEST_DIR = '../data/amazon.test.txt'
-
+MODEL_DIR = args.model
+TEST_DIR = args.data
+# start
 model = fasttext.load_model(MODEL_DIR)
 
 with open(TEST_DIR,'r',encoding = "ISO-8859-1") as f:
