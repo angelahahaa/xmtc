@@ -8,3 +8,4 @@
 /archive*
 */models/
 *.log
+/glove*
