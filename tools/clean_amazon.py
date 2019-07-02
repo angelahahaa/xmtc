@@ -15,7 +15,8 @@ DES_DIR = './Amazon_RawData/descriptions.txt'
 CAT_DIR = './Amazon_RawData/categories.txt'
 TRAIN_DIR = "./AmazonCat-13K_mappings/AmazonCat-13K_train_map.txt"
 TEST_DIR = "./AmazonCat-13K_mappings/AmazonCat-13K_test_map.txt"
-OUT_DIR = "./data/amazon_raw.pkl"
+CAT_MAP_DIR = "./AmazonCat-13K_mappings/AmazonCat-13K_label_map.txt"
+OUT_DIR = "./data/amazon_des.pkl"
 
 # define id pattern
 pattern = re.compile("[^A-Z0-9]+")
@@ -55,6 +56,9 @@ for i,line in enumerate(lines):
         data[id]['description'] = data[id]['description']+" "+line
 
 # read categories
+with open(CAT_MAP_DIR,'r',encoding = "ISO-8859-1") as f:
+    cats_map = f.read().splitlines()
+cats_set = set([c.lower() for c in cats_map])
 with open(CAT_DIR,'r',encoding = "ISO-8859-1") as f:
     lines = f.read().splitlines()
 for i,line in enumerate(lines):
@@ -63,6 +67,7 @@ for i,line in enumerate(lines):
         data[id]['categories']=[]
     elif lines[2][:2]=='  ':
         cats = [t.strip().lower() for t in line.split(',')]
+        cats = [c for c in cats if c in cats_set]
         data[id]['categories'] = data[id]['categories']+ cats
     else:
         raise Exception('invalide line {} : {}'.format(i,line))
@@ -98,13 +103,14 @@ for id in testid:
 print('CREATE DATAFRAME..')
 df = pd.DataFrame.from_dict(d, orient='index')
 
-# combine name and description with seperator |||
-df['name'] = df['name'].fillna('none')
-df['text'] = df['name'] + " ||| " + df['description']
-df.drop(columns = ['name','description'])
+# # combine name and description with seperator |||
+# df['name'] = df['name'].fillna('none')
+# df['text'] = df['name'] + " ||| " + df['description']
+# df = df.drop(columns = ['name','description'])
+# print(df['train/test'].value_counts())
+df['text'] = df['description']
 df = df.drop(columns = ['name','description'])
 print(df['train/test'].value_counts())
-
 # save as pkl
 print('SAVE DATAFRAME..')
 df.to_pickle(OUT_DIR)
