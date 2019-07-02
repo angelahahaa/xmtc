@@ -96,7 +96,7 @@ for id in trainid:
     data[id]['train/test'] = 'train'
     d[id] = data[id]
 for id in testid:
-    data[id]['train/test']='trest'
+    data[id]['train/test']='test'
     d[id] = data[id]
 
 # create dataframe

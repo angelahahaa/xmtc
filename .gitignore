@@ -9,3 +9,4 @@
 */models/
 *.log
 /glove*
+*/__pycache__/
