@@ -11,3 +11,4 @@
 /glove*
 */__pycache__/
 /xmlcnn/
+/attentionxml/
