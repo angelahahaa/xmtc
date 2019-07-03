@@ -10,3 +10,4 @@
 *.log
 /glove*
 */__pycache__/
+/xmlcnn/

@@ -9,18 +9,29 @@ from keras.layers import Conv1D, MaxPooling1D, Embedding
 from keras.models import Model
 from keras.initializers import Constant
 from keras.metrics import categorical_accuracy, binary_accuracy
+from keras.callbacks import CSVLogger
 
 from sklearn.preprocessing import MultiLabelBinarizer
 
 import scipy.sparse
 from tools.helper import MetricsAtTopK, clean_str
 
+# argparse
+import argparse
+parser = argparse.ArgumentParser(description='run xmlcnn')
+parser.add_argument('-i','--input',required = True,help='input directory e.g. ./data/dl_amazon_1')
+parser.add_argument('-o','--output',default = '',help='output directory for model e.g. ./xmlcnn/models/amazon_')
+parser.add_argument('--log',default = 'dump.csv', help= 'log file in csv format e.g. ./log.csv')
+parser.add_argument('--epoch',type=int,default=5,help='epochs')
+args = parser.parse_args()
+
 # things
 MAX_SEQUENCE_LENGTH = 500
 MAX_NUM_WORDS = 50000
 EMBEDDING_DIM = 300
-IN_DIR = './data/amazon_xmlcnn'
-
+IN_DIR = args.input
+if not os.path.exists(IN_DIR):
+    raise Exception('input path does not exist: {}'.format(IN_DIR))
 with open('{}/tokenizer.pkl'.format(IN_DIR), 'rb') as f:
     tokenizer = pickle.load(f)
 with open('{}/mlb.pkl'.format(IN_DIR), 'rb') as f:
@@ -69,9 +80,13 @@ def p5(x,y):
 model.compile(loss='binary_crossentropy',
               optimizer='adam',
               metrics=[binary_accuracy,p1,p5])
-
+csv_logger = CSVLogger(args.log,append=True)
 model.fit(x_train, y_train,
           batch_size=128,
-          epochs=10,
+          epochs=args.epoch,
           validation_data=(x_test, y_test),
+          callbacks = [csv_logger]
          )
+# save things
+if args.output:
+    model.save_weights('{}.h5'.format(args.output))
