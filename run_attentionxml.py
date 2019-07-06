@@ -11,6 +11,11 @@ from keras.initializers import Constant
 from keras.metrics import categorical_accuracy, binary_accuracy
 from keras.callbacks import CSVLogger
 
+from keras.layers import CuDNNLSTM, Bidirectional, LSTM, Dropout
+from keras.layers import TimeDistributed, Lambda, Softmax, merge
+import tensorflow as tf
+import keras.backend as K
+
 from sklearn.preprocessing import MultiLabelBinarizer
 
 import scipy.sparse
@@ -23,6 +28,7 @@ parser.add_argument('-i','--input',default = './data/dl_amazon_1', help='input d
 parser.add_argument('-o','--output',default = '',help='output directory for model e.g. ./xmlcnn/models/amazon_')
 parser.add_argument('--log',default = 'dump.csv', help= 'log file in csv format e.g. ./log.csv')
 parser.add_argument('--epoch',type=int,default=5,help='epochs')
+parser.add_argument('--batch_size',type=int,default=20,help='batch size')
 args = parser.parse_args()
 
 # things
@@ -41,6 +47,8 @@ x_train = np.load('{}/x_train.npy'.format(IN_DIR))
 x_test = np.load('{}/x_test.npy'.format(IN_DIR))
 y_train = scipy.sparse.load_npz('{}/y_train.npz'.format(IN_DIR))
 y_test = scipy.sparse.load_npz('{}/y_test.npz'.format(IN_DIR))
+y_train = y_train.todense()
+y_test = y_test.todense()
 
 labels_dim = len(mlb.classes_)
 num_words = min(MAX_NUM_WORDS, len(tokenizer.word_index)) + 1
@@ -52,10 +60,7 @@ embedding_layer = Embedding(num_words,
                             input_length=MAX_SEQUENCE_LENGTH,
                             trainable=False)
 
-from keras.layers import CuDNNLSTM, Bidirectional, LSTM
-from keras.layers import TimeDistributed, Lambda, Softmax, merge
-import tensorflow as tf
-import keras.backend as K
+
 L = labels_dim
 def apply_attention(inputs):
     input1, input2 = inputs
@@ -71,9 +76,14 @@ attention = Softmax(axis=1,name='attention_softmax')(attention)
 x = Lambda(apply_attention,name = 'apply_attention')([x, attention])
 x = Lambda(lambda x:K.permute_dimensions(x,(0,2,1)),name='transpose')(x)
 x = TimeDistributed(Dense(512,activation='relu'))(x)
+x = Dropout(0.5)(x)
 x = TimeDistributed(Dense(256,activation='relu'))(x)
-x = TimeDistributed(Dense(1,activation='sigmoid'))(x)
+x = Dropout(0.5)(x)
+x = TimeDistributed(Dense(1,activation=None))(x)
 x = Lambda(lambda x:K.squeeze(x,axis=-1))(x)
+
+def loss_function(y_true, y_pred):
+    return K.mean(K.binary_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
 
 model = Model(sequence_input, x)
 pat1 = MetricsAtTopK(k=1)
@@ -83,13 +93,13 @@ def p1(x,y):
 def p5(x,y):
     return pat5.precision_at_k(x,y)
 
-model.compile(loss='binary_crossentropy',
+model.compile(loss=loss_function,
               optimizer='adam',
               metrics=[binary_accuracy,p1,p5])
 print(model.summary())
 csv_logger = CSVLogger(args.log,append=True)
 model.fit(x_train[:,:MAX_SEQUENCE_LENGTH], y_train,
-          batch_size=30,
+          batch_size=args.batch_size,
           epochs=args.epoch,
           validation_data=(x_test[:,:MAX_SEQUENCE_LENGTH], y_test),
           callbacks = [csv_logger],
