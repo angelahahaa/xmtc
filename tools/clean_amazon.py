@@ -65,7 +65,7 @@ for i,line in enumerate(lines):
     if line[0]!=' ':
         id = line
         data[id]['categories']=[]
-    elif lines[2][:2]=='  ':
+    elif line[:2]=='  ':
         cats = [t.strip().lower() for t in line.split(',')]
         cats = [c for c in cats if c in cats_set]
         data[id]['categories'] = data[id]['categories']+ cats
