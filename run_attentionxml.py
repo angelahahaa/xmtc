@@ -84,6 +84,8 @@ x = Lambda(lambda x:K.squeeze(x,axis=-1))(x)
 
 def loss_function(y_true, y_pred):
     return K.mean(K.binary_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
+def binary_accuracy_with_logits(y_true, y_pred):
+    return K.mean(K.equal(y_true, K.tf.cast(K.less(0.0,y_pred), y_true.dtype)))
 
 model = Model(sequence_input, x)
 pat1 = MetricsAtTopK(k=1)
@@ -95,7 +97,7 @@ def p5(x,y):
 
 model.compile(loss=loss_function,
               optimizer='adam',
-              metrics=[binary_accuracy,p1,p5])
+              metrics=[binary_accuracy_with_logits,p1,p5])
 print(model.summary())
 csv_logger = CSVLogger(args.log,append=True)
 model.fit(x_train[:,:MAX_SEQUENCE_LENGTH], y_train,

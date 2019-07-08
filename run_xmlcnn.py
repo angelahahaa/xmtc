@@ -11,6 +11,11 @@ from keras.initializers import Constant
 from keras.metrics import categorical_accuracy, binary_accuracy
 from keras.callbacks import CSVLogger
 
+from keras.layers import CuDNNLSTM, Bidirectional, LSTM, Dropout
+from keras.layers import TimeDistributed, Lambda, Softmax, merge
+import tensorflow as tf
+import keras.backend as K
+
 from sklearn.preprocessing import MultiLabelBinarizer
 
 import scipy.sparse
@@ -41,6 +46,8 @@ x_train = np.load('{}/x_train.npy'.format(IN_DIR))
 x_test = np.load('{}/x_test.npy'.format(IN_DIR))
 y_train = scipy.sparse.load_npz('{}/y_train.npz'.format(IN_DIR))
 y_test = scipy.sparse.load_npz('{}/y_test.npz'.format(IN_DIR))
+y_train = y_train.todense()
+y_test = y_test.todense()
 
 labels_dim = len(mlb.classes_)
 num_words = min(MAX_NUM_WORDS, len(tokenizer.word_index)) + 1
@@ -67,9 +74,15 @@ for fsz in filter_sizes:
     convs.append(l)
 x = Concatenate(axis=-1)(convs)
 x = Dense(512, activation = 'relu')(x)
-x = Dense(labels_dim, activation = 'sigmoid')(x)
-model = Model(sequence_input, x)
+x = Dropout(0.5)(x)
+x = Dense(labels_dim, activation = None)(x)
 
+def loss_function(y_true, y_pred):
+    return K.mean(K.binary_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
+def binary_accuracy_with_logits(y_true, y_pred):
+    return K.mean(K.equal(y_true, K.tf.cast(K.less(0.0,y_pred), y_true.dtype)))
+
+model = Model(sequence_input, x)
 pat1 = MetricsAtTopK(k=1)
 pat5 = MetricsAtTopK(k=5)
 def p1(x,y):
@@ -77,9 +90,10 @@ def p1(x,y):
 def p5(x,y):
     return pat5.precision_at_k(x,y)
 
-model.compile(loss='binary_crossentropy',
+model.compile(loss=loss_function,
               optimizer='adam',
-              metrics=[binary_accuracy,p1,p5])
+              metrics=[binary_accuracy_with_logits,p1,p5])
+print(model.summary())
 csv_logger = CSVLogger(args.log,append=True)
 model.fit(x_train, y_train,
           batch_size=128,
