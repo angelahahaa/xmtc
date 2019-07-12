@@ -9,19 +9,32 @@ from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 
 # things
-DATA_DIR = './data/amazon_des.pkl'
-OUT_DIR = './data/amazon_xmlcnn'
+
+# argparse
+import argparse
+parser = argparse.ArgumentParser(description='run xmlcnn')
+parser.add_argument('-i','--input',required = True,help='input dataframe e.g. ./data/amazon_des.pkl')
+parser.add_argument('-o','--output',required = True,help='output directory for data e.g. ./data/amazon_xmlcnn')
+parser.add_argument('--max_sequence_length',type=int,default = 500)
+parser.add_argument('--max_num_words',type=int,default = 50000)
+parser.add_argument('--clean_text',default = False, action='store_true')
+args = parser.parse_args()
+
+# things
+MAX_SEQUENCE_LENGTH = args.max_sequence_length
+MAX_NUM_WORDS = args.max_num_words
+DATA_DIR = args.input
+OUT_DIR = args.output
 EMBEDDINGS_DIR = './glove.840B.300d.txt'
-MAX_SEQUENCE_LENGTH = 500
-MAX_NUM_WORDS = 50000
 EMBEDDING_DIM = 300
 
 # load sentences
 print('READING DATA FROM : {}'.format(DATA_DIR))
 df = pd.read_pickle(DATA_DIR)
 # clean text
-print('CLEAN TEXT')
-df['text']= df['text'].apply(clean_str)
+if args.clean_text:
+    print('CLEAN TEXT')
+    df['text']= df['text'].apply(clean_str)
 # train val split
 train_df = df[df['train/test']=='train']
 test_df = df[df['train/test']=='test']
