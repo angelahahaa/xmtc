@@ -23,17 +23,19 @@ from tools.helper import MetricsAtTopK, clean_str
 
 # argparse
 import argparse
-parser = argparse.ArgumentParser(description='run xmlcnn')
+parser = argparse.ArgumentParser(description='run attentionxml')
 parser.add_argument('-i','--input',default = './data/dl_amazon_1', help='input directory e.g. ./data/dl_amazon_1')
 parser.add_argument('-o','--output',default = '',help='output directory for model e.g. ./xmlcnn/models/amazon_')
 parser.add_argument('--log',default = 'dump.csv', help= 'log file in csv format e.g. ./log.csv')
 parser.add_argument('--epoch',type=int,default=5,help='epochs')
 parser.add_argument('--batch_size',type=int,default=20,help='batch size')
+parser.add_argument('--max_sequence_length',type=int,default = 500)
+parser.add_argument('--max_num_words',type=int,default = 50000)
 args = parser.parse_args()
 
 # things
-MAX_SEQUENCE_LENGTH = 500
-MAX_NUM_WORDS = 50000
+MAX_SEQUENCE_LENGTH = args.max_sequence_length
+MAX_NUM_WORDS = args.max_num_words
 EMBEDDING_DIM = 300
 IN_DIR = args.input
 if not os.path.exists(IN_DIR):
