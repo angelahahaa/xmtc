@@ -7,6 +7,7 @@ from keras.layers import TimeDistributed, Lambda, Softmax, merge
 from keras.initializers import Constant
 from keras.layers import Input, Embedding
 import tensorflow as tf
+import keras.backend as K
 
 
 def apply_attention(inputs):
@@ -43,7 +44,7 @@ def get_model(model_name,embedding_matrix,max_sequence_length,labels_dim):
             x = Bidirectional(CuDNNLSTM(512, return_sequences=True))(embedded_sequences)
         else:
             x = embedded_sequences
-        attention = Dense(L,activation=None,name='attention_dense')(x)
+        attention = Dense(labels_dim,activation=None,name='attention_dense')(x)
         attention = Softmax(axis=1,name='attention_softmax')(attention)
         x = Lambda(apply_attention,name = 'apply_attention')([x, attention])
         x = Lambda(lambda x:K.permute_dimensions(x,(0,2,1)),name='transpose')(x)
