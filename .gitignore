@@ -9,7 +9,7 @@
 */models/
 *.log
 /glove*
-*/__pycache__/
+__pycache__/
 /xmlcnn/
 /attentionxml/
 /attention/
