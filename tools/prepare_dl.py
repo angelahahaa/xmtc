@@ -3,7 +3,7 @@ import os,re
 import pandas as pd
 import pickle
 from sklearn.preprocessing import MultiLabelBinarizer
-from tools.helper import MetricsAtTopK, clean_str
+from helper import MetricsAtTopK, clean_str
 import scipy.sparse
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences

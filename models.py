@@ -54,4 +54,6 @@ def get_model(model_name,embedding_matrix,max_sequence_length,labels_dim):
         x = Dropout(0.5)(x)
         x = TimeDistributed(Dense(1,activation=None))(x)
         x = Lambda(lambda x:K.squeeze(x,axis=-1))(x)
+    else:
+        raise Exception('Invalid model_name : {}'.format(model_name))
     return Model(sequence_input, x)

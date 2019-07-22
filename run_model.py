@@ -13,7 +13,9 @@ from sklearn.preprocessing import MultiLabelBinarizer
 
 import scipy.sparse
 from tools.helper import MetricsAtTopK, clean_str
+from tools.MyClock import MyClock
 from models import get_model
+clk = MyClock()
 
 # argparse
 import argparse
@@ -25,7 +27,7 @@ parser.add_argument('--epoch', default = 5, type = int, help = 'epochs')
 parser.add_argument('--batch_size', default = 0, type = int, help = 'batch size')
 parser.add_argument('--early_stopping', default = False, action = 'store_true', help = 'early stopping using validation set (not implemented yet)')
 parser.add_argument('--save_weights', default = True, action = 'store_true', help = 'save trained model weights')
-parser.add_argument('--save_prediction', default = 0, type = int, help = 'save top k prediction and corresponding probabilities (not implemented yet)')
+parser.add_argument('--save_prediction', default = 10, type = int, help = 'save top k prediction and corresponding probabilities (not implemented yet)')
 args = parser.parse_args()
 
 def binary_cross_entropy_with_logits(y_true, y_pred):
@@ -42,7 +44,7 @@ def p5(x,y):
 
 if not args.batch_size:
     if args.model == 'attention':
-        args.batch_size = 128
+        args.batch_size = 25
     elif args.model == 'xmlcnn':
         args.batch_size = 128
     elif args.model == 'attentionxml':
@@ -109,6 +111,26 @@ else:
 if args.save_weights:
     model.save_weights(os.path.join(out_dir,'weights.h5'))
 if args.save_prediction:
-    pass
+    print('SAVE PREDICTIONS')
+    k = args.save_prediction
+    batch_size = x_test.shape[0]//100
+    IND_DIR = os.path.join(out_dir,'prediction_{}_ind.txt'.format(k))
+    LOGITS_DIR = os.path.join(out_dir,'prediction_{}_logits.txt'.format(k))
+    f_ind = open(IND_DIR,'ab')
+    f_logits = open(IND_DIR,'ab')
+    s = x_test.shape[0]
+    clk.tic()
+    for i,start in enumerate(range(0,s,batch_size)):
+        end = min(start+batch_size,s)
+        x_batch = x_test[start:end,:]
+        out_probs = model.predict(x_batch)
+        ind = np.argsort(out_probs,axis=1)[:,-k:]
+        ind = ind[:,::-1]
+        logits = np.take_along_axis(out_probs, ind, axis=1)
+        np.savetxt(f_ind,ind,fmt='%d')
+        np.savetxt(f_logits,logits,fmt='%1.3f')
+        print('{:0.0f}% {}'.format(end/s*100,clk.toc(False)),end='\r')
+    f_ind.close()
+    f_logits.close()
 csv_path = os.path.join(out_dir,'args.csv')
 pd.DataFrame.from_dict([vars(args)]).to_csv(csv_path)
