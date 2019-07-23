@@ -18,6 +18,7 @@ parser.add_argument('-o','--output',required = True,help='output directory for d
 parser.add_argument('--max_sequence_length',type=int,default = 500)
 parser.add_argument('--max_num_words',type=int,default = 50000)
 parser.add_argument('--clean_text',default = False, action='store_true')
+parser.add_argument('--layers',type=int,default=0,help='clip layers (remove train/test samples that has less than clipped layers)')
 args = parser.parse_args()
 
 # things
@@ -27,6 +28,10 @@ DATA_DIR = args.input
 OUT_DIR = args.output
 EMBEDDINGS_DIR = './glove.840B.300d.txt'
 EMBEDDING_DIM = 300
+
+# out_dir
+if not os.path.exists(OUT_DIR):
+    os.mkdir(OUT_DIR)
 
 # load sentences
 print('READING DATA FROM : {}'.format(DATA_DIR))
@@ -38,6 +43,30 @@ if args.clean_text:
 # train val split
 train_df = df[df['train/test']=='train']
 test_df = df[df['train/test']=='test']
+# get labels
+print('BUILD MULTILABELBINARIZER')
+if args.layers:
+    for n in range(args.layers):
+        header = 'cat{}'.format(n)
+        mlb = MultiLabelBinarizer(sparse_output=True)
+        mlb.fit(df[header])
+        y_train = mlb.transform(train_df[header].values)
+        y_test = mlb.transform(test_df[header].values)
+        scipy.sparse.save_npz('{}/y_train_{}.npz'.format(OUT_DIR,n),y_train)
+        scipy.sparse.save_npz('{}/y_test_{}.npz'.format(OUT_DIR,n),y_test)
+        with open('{}/mlb_{}.pkl'.format(OUT_DIR,n),'wb') as f:
+            pickle.dump(mlb,f, protocol=pickle.HIGHEST_PROTOCOL)
+else:
+    mlb = MultiLabelBinarizer(sparse_output=True)
+    mlb.fit(df['categories'].values)
+    y_train = mlb.transform(train_df['categories'].values)
+    y_test = mlb.transform(test_df['categories'].values)
+    print('Found {} classes'.format(len(mlb.classes_)))
+
+    with open('{}/mlb.pkl'.format(OUT_DIR),'wb') as f:
+        pickle.dump(mlb,f, protocol=pickle.HIGHEST_PROTOCOL)
+    scipy.sparse.save_npz('{}/y_train.npz'.format(OUT_DIR),y_train)
+    scipy.sparse.save_npz('{}/y_test.npz'.format(OUT_DIR),y_test)
 # build tokenizer
 print('BUILD TOKENIZER')
 tokenizer = Tokenizer(
@@ -53,18 +82,11 @@ x_train = tokenizer.texts_to_sequences(train_df['text'].values)
 x_train = pad_sequences(x_train, maxlen=MAX_SEQUENCE_LENGTH, padding='post', truncating='post')
 x_test = tokenizer.texts_to_sequences(test_df['text'].values)
 x_test = pad_sequences(x_test, maxlen=MAX_SEQUENCE_LENGTH, padding='post', truncating='post')
-# get labels
-print('BUILD MULTILABELBINARIZER')
-mlb = MultiLabelBinarizer(sparse_output=True)
-mlb.fit(df['categories'].values)
-y_train = mlb.transform(train_df['categories'].values)
-y_test = mlb.transform(test_df['categories'].values)
-print('Found {} classes'.format(len(mlb.classes_)))
 # get embedding matrix
 print('BUILD EMBEDDING MATRIX')
 vocab = set(word_index)
 embeddings_index = {}
-with open(EMBEDDINGS_DIR) as f:
+with open(EMBEDDINGS_DIR,encoding="utf-8") as f:
     for line in f:
         values = line.split(' ')
         word = values[0]
@@ -91,14 +113,8 @@ num_words = min(MAX_NUM_WORDS, len(tokenizer.word_index)) + 1
 
 # save things
 print('SAVING THINGS')
-if not os.path.exists(OUT_DIR):
-    os.mkdir(OUT_DIR)
 with open('{}/tokenizer.pkl'.format(OUT_DIR), 'wb') as handle:
     pickle.dump(tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open('{}/mlb.pkl'.format(OUT_DIR),'wb') as f:
-    pickle.dump(mlb,f, protocol=pickle.HIGHEST_PROTOCOL)
 np.save('{}/embedding_matrix.npy'.format(OUT_DIR),embedding_matrix)
 np.save('{}/x_train.npy'.format(OUT_DIR),x_train)
 np.save('{}/x_test.npy'.format(OUT_DIR),x_test)
-scipy.sparse.save_npz('{}/y_train.npz'.format(OUT_DIR),y_train)
-scipy.sparse.save_npz('{}/y_test.npz'.format(OUT_DIR),y_test)

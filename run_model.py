@@ -117,7 +117,7 @@ if args.save_prediction:
     IND_DIR = os.path.join(out_dir,'prediction_{}_ind.txt'.format(k))
     LOGITS_DIR = os.path.join(out_dir,'prediction_{}_logits.txt'.format(k))
     f_ind = open(IND_DIR,'ab')
-    f_logits = open(IND_DIR,'ab')
+    f_logits = open(LOGITS_DIR,'ab')
     s = x_test.shape[0]
     clk.tic()
     for i,start in enumerate(range(0,s,batch_size)):

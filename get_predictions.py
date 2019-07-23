@@ -12,11 +12,14 @@ clk = MyClock()
 
 k=10
 # start
-IN_DIR = 'data/dl_sic'
+IN_DIR = 'data/dl_amazon_1h'
 MODEL_DIRS = [
-        'outputs/190715_214745_xmlcnn',
-        'outputs/190715_215817_attentionxml',
-        'outputs/190715_235041_attention',
+        # 'outputs/190722_204831_xmlcnn',
+        # 'outputs/190715_215817_attentionxml',
+        # 'outputs/190715_235041_attention',
+        'outputs/190716_105336_xmlcnn',
+        'outputs/190716_112050_attentionxml',
+        'outputs/190718_125651_attention',
         ]
 
 print('READ DATA...')

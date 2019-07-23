@@ -3,7 +3,6 @@ import tensorflow as tf
 import re
 import nltk
 from nltk.tokenize import word_tokenize
-nltk.download('punkt')
 
 class MetricsAtTopK:
     def __init__(self, k):
@@ -63,6 +62,7 @@ class MetricsAtTopK:
         return f1
 
 def clean_str(text):
+    nltk.download('punkt')
     return ' '.join(word_tokenize(text)).lower()
 # def clean_str(string):
 #     # remove stopwords
