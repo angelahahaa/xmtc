@@ -1,136 +1,251 @@
-import numpy as np
-import os,re,datetime
-import pandas as pd
-import pickle
+#!/usr/bin/env python
+# coding: utf-8
 
-from keras.preprocessing.text import Tokenizer
-from keras.metrics import categorical_accuracy, binary_accuracy
-from keras.callbacks import CSVLogger
-import tensorflow as tf
-import keras.backend as K
+# # IMPORTS
 
-from sklearn.preprocessing import MultiLabelBinarizer
 
-import scipy.sparse
-from tools.helper import MetricsAtTopK, clean_str
-from tools.MyClock import MyClock
-from models import get_model
-clk = MyClock()
 
-# argparse
+
+# basic
 import argparse
+import os,datetime
+# data input
+import numpy as np
+import scipy.sparse
+# metric and loss function
+import keras.backend as K
+import tensorflow as tf
+from keras.metrics import categorical_accuracy, binary_accuracy, top_k_categorical_accuracy
+# embedding
+from keras.initializers import Constant
+from keras.layers import Embedding
+# models
+from keras.layers import Dense, Input, Flatten, Concatenate, Conv1D, MaxPooling1D, Dropout
+from keras.layers import CuDNNLSTM, Bidirectional, TimeDistributed, Lambda, Softmax
+from keras.initializers import Constant
+from keras.models import Model
+# misc
+from tools.MyClock import MyClock
+# save things
+import pandas as pd
+from keras.callbacks import CSVLogger
+
+
+
+
+
+def Coloured(string):
+    return "\033[1;30;43m {} \033[0m".format(string)
+
+
+# # ARGPARSE
+
+
+
+
 parser = argparse.ArgumentParser(description = 'run baseline models')
 parser.add_argument('-i','--input', required = True, type = str, help = 'input directory e.g. ./data/dl_amazon_1/')
-parser.add_argument('-o','--output', required = True, type = str, help = 'output directory')
 parser.add_argument('-m','--model', required = True, type = str, help = 'model, one in: xmlcnn, attentionxml, attention,')
+parser.add_argument('-l','--loss', default = 'categorical', type = str, help = "loss type, categorical or binary ")
+parser.add_argument('-o','--output', default = 'outputs', type = str, help = 'output directory')
 parser.add_argument('--epoch', default = 5, type = int, help = 'epochs')
 parser.add_argument('--batch_size', default = 0, type = int, help = 'batch size')
-parser.add_argument('--early_stopping', default = False, action = 'store_true', help = 'early stopping using validation set (not implemented yet)')
-parser.add_argument('--save_weights', default = True, action = 'store_true', help = 'save trained model weights')
-parser.add_argument('--save_prediction', default = 10, type = int, help = 'save top k prediction and corresponding probabilities (not implemented yet)')
+parser.add_argument('--save_weights', default = True, action = 'store_true', help = 'save trained weights')
+parser.add_argument('--save_model', default = True, action = 'store_true', help = 'save trained model architecture')
+parser.add_argument('--save_prediction', default = True, action = 'store_true', help = 'save top 10 prediction and corresponding probabilities (not implemented yet)')
 args = parser.parse_args()
 
-def binary_cross_entropy_with_logits(y_true, y_pred):
-    return K.mean(K.binary_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
-# metrics
-def binary_accuracy_with_logits(y_true, y_pred):
-    return K.mean(K.equal(y_true, K.tf.cast(K.less(0.0,y_pred), y_true.dtype)))
-pat1 = MetricsAtTopK(k=1)
-pat5 = MetricsAtTopK(k=5)
-def p1(x,y):
-    return pat1.precision_at_k(x,y)
-def p5(x,y):
-    return pat5.precision_at_k(x,y)
-
+# argparse validation
+default_batch_size = {'xmlcnn':128,'attentionxml':20,'attention':25}
+if not os.path.exists(args.input):
+    raise Exception('Input path does not exist: {}'.format(args.input))
+if not os.path.exists(args.output):
+    os.mkdir(args.output)
+    print(Coloured("Create Output Directory: {}".format(args.output)))
 if not args.batch_size:
-    if args.model == 'attention':
-        args.batch_size = 25
-    elif args.model == 'xmlcnn':
-        args.batch_size = 128
-    elif args.model == 'attentionxml':
-        args.batch_size = 20
-
+    args.batch_size = default_batch_size[args.model]
 IN_DIR = args.input
-OUT_DIR = args.output
-in_dirs = {
-    'embedding_matrix':'embedding_matrix.npy',
-    'x_train':'x_train.npy',
-    'x_test':'x_test.npy',
-    'y_train':'y_train.npz',
-    'y_test':'y_test.npz'
-}
-for key,val in in_dirs.items():
-    d = os.path.join(IN_DIR,val)
-    if not os.path.exists(d):
-        raise Exception('path does not exist: {}'.format(d))
-    else:
-        in_dirs[key] = d
-if not os.path.exists(OUT_DIR):
-    os.mkdir(OUT_DIR)
-out_dir = os.path.join(
+OUT_DIR = os.path.join(
     args.output,
     datetime.datetime.now().strftime('%y%m%d_%H%M%S_{}'.format(args.model)),
 )
+if not os.path.exists(OUT_DIR):
+    os.mkdir(OUT_DIR)
 
-# things
-if not os.path.exists(IN_DIR):
-    raise Exception('input path does not exist: {}'.format(IN_DIR))
-print('READ DATA...')
-embedding_matrix = np.load(in_dirs['embedding_matrix'])
-x_train = np.load(in_dirs['x_train'])
-x_test = np.load(in_dirs['x_test'])
-y_train = scipy.sparse.load_npz(in_dirs['y_train'])
-y_test = scipy.sparse.load_npz(in_dirs['y_test'])
-y_train = y_train.todense()
-y_test = y_test.todense()
-labels_dim = y_train.shape[-1]
-num_words,embedding_dim = embedding_matrix.shape
-max_sequence_length = x_train.shape[1]
-print('Train: {}, Test: {}, Labels: {}, Vocab size: {}, Embedding: {}'.format(
-    x_train.shape[0],x_test.shape[0],labels_dim,num_words-1,embedding_dim))
 
-model = get_model(args.model,embedding_matrix,max_sequence_length,labels_dim)
-model.compile(loss=binary_cross_entropy_with_logits,
+# # INPUT
+
+
+
+
+def get_input(in_dir):
+    x_train = np.load(os.path.join(in_dir,'x_train.npy'))
+    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_train')]
+    y_trains = [scipy.sparse.load_npz(d).todense() for d in dirs]
+
+    x_test = np.load(os.path.join(in_dir,'x_test.npy'))
+    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_test')]
+    y_tests = [scipy.sparse.load_npz(d).todense() for d in dirs]
+    return x_train,y_trains,x_test,y_tests
+
+
+# # EMBEDDING LAYER
+
+
+
+
+def get_embedding_layer():
+    embedding_matrix = np.load(os.path.join(IN_DIR,'embedding_matrix.npy'))
+    num_words, embedding_dim = embedding_matrix.shape
+    embedding_layer = Embedding(num_words,
+                                embedding_dim,
+                                embeddings_initializer=Constant(embedding_matrix),
+                                trainable=False)
+    return embedding_layer
+
+
+# # MODELS
+
+
+
+
+def apply_attention(inputs):
+    input1, input2 = inputs
+    outer_product = tf.einsum('ghj, ghk -> gjk', input1, input2)
+    return outer_product
+
+def get_model(model_name, max_sequence_length, labels_dims):
+    embedding_layer = get_embedding_layer()
+    sequence_input = Input(shape=(max_sequence_length,), dtype='int32')
+    embedded_sequences = embedding_layer(sequence_input)
+    if model_name == 'xmlcnn':
+        filter_sizes = [2,4,8]
+        pooling_units = 32
+        bottle_neck = 512
+        convs = []
+        for fsz in filter_sizes:
+            l = Conv1D(filters = 128, kernel_size = fsz, strides = 2, activation = 'relu')(embedded_sequences)
+            s = int(l.shape[-2])
+            pool_size = s//pooling_units
+            l = MaxPooling1D(pool_size,padding = 'same')(l)
+            l = Flatten()(l)
+            convs.append(l)
+        x = Concatenate(axis=-1)(convs)
+        x = Dense(bottle_neck, activation = 'relu')(x)
+        x = Dropout(0.5)(x)
+        outs = []
+        for i,labels_dim in enumerate(labels_dims):
+            outs.append(Dense(labels_dim, activation = None, name = 'H{}'.format(i))(x))
+    elif model_name in ['attentionxml','attention']:
+        labels_dim = sum(labels_dims)
+        if model_name == 'attentionxml':
+            # with lstm
+            x = Bidirectional(CuDNNLSTM(512, return_sequences=True))(embedded_sequences)
+        else:
+            # without lstm
+            x = embedded_sequences
+        attention = Dense(labels_dim,activation=None,name='attention_dense')(x)
+        attention = Softmax(axis=1,name='attention_softmax')(attention)
+        x = Lambda(apply_attention,name = 'apply_attention')([x, attention])
+        x = Lambda(lambda x:K.permute_dimensions(x,(0,2,1)),name='transpose')(x)
+        x = TimeDistributed(Dense(512,activation='relu'))(x)
+        x = Dropout(0.5)(x)
+        x = TimeDistributed(Dense(256,activation='relu'))(x)
+        x = Dropout(0.5)(x)
+        x = TimeDistributed(Dense(1,activation=None))(x)
+        x = Lambda(lambda x:K.squeeze(x,axis=-1))(x)
+        outs = []
+        start = 0
+        for i,labels_dim in enumerate(labels_dims):
+            outs.append(Lambda(lambda x:x[:,start:start+labels_dim],name = 'H{}'.format(i))(x))
+            start+=labels_dim
+    else:
+        raise Exception('Invalid model_name : {}'.format(model_name))
+    return Model(sequence_input, outs)
+
+
+# # LOSSES
+
+
+
+
+def binary_cross_entropy_with_logits(y_true, y_pred):
+    return K.mean(K.binary_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
+def categorical_cross_entropy_with_logits(y_true, y_pred):
+    return K.mean(K.categorical_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
+loss_dict = {'binary':binary_cross_entropy_with_logits,
+             'categorical':categorical_cross_entropy_with_logits,}
+
+
+# # METRICS
+
+
+
+
+def binary_accuracy_with_logits(y_true, y_pred):
+    return K.mean(K.equal(y_true, K.tf.cast(K.less(0.0,y_pred), y_true.dtype)))
+def pAt1(y_true,y_pred):
+    return categorical_accuracy(y_true, y_pred)
+def pAt5(y_true,y_pred):
+    return top_k_categorical_accuracy(y_true, y_pred, k=5)
+
+
+# # MISC
+
+
+
+
+def save_predictions(model,x_test,y_tests,out_dir):
+    print('SAVE PREDICTIONS TO : {}'.format(out_dir))
+    out_probs = model.predict(x_test,verbose=1)
+    ind_dirs = [os.path.join(out_dir,'pred_outputs{}.txt'.format(i)) for i in range(len(y_tests))]
+    log_dirs = [os.path.join(out_dir,'pred_logits{}.txt'.format(i)) for i in range(len(y_tests))]
+    f_ind = [open(ind_dir,'ab') for ind_dir in ind_dirs]
+    f_log = [open(log_dir,'ab') for log_dir in log_dirs]
+    for i,out_prob in enumerate(out_probs):
+        ind = np.argsort(out_prob,axis=1)[:,:-11:-1]
+        logits = np.take_along_axis(out_prob, ind, axis=1)
+        np.savetxt(f_ind[i],ind,fmt='%d')
+        np.savetxt(f_log[i],logits,fmt='%1.3f')
+    for f in f_ind + f_log:
+        f.close()
+
+
+# # MAIN
+
+
+
+
+csv_logger = CSVLogger(os.path.join(OUT_DIR,'train.log'),append=False)
+# inputs
+x_train,y_trains,x_test,y_tests = get_input(IN_DIR)
+_,max_sequence_length = x_train.shape
+labels_dims = [l.shape[-1] for l in y_tests]
+model = get_model(args.model, max_sequence_length, labels_dims)
+model.compile(loss=loss_dict[args.loss],
               optimizer='adam',
-              metrics=[binary_accuracy_with_logits,p1,p5])
+              metrics=[pAt1,pAt5])
+model.fit(x_train, y_trains,
+          batch_size = args.batch_size,
+          epochs = args.epoch,
+          validation_data = (x_test, y_tests),
+          callbacks = [csv_logger],
+          shuffle=True,
+         )
 
-print(model.summary())
-if not os.path.exists(out_dir):
-    os.mkdir(out_dir)
-csv_logger = CSVLogger(os.path.join(out_dir,'train.log'),append=False)
-if args.early_stopping:
-    pass
-else:
-    model.fit(x_train, y_train,
-              batch_size = args.batch_size,
-              epochs = args.epoch,
-              validation_data = (x_test, y_test),
-              callbacks = [csv_logger],
-              shuffle=True,
-             )
+
+# # save things
+
+
+
+
 if args.save_weights:
-    model.save_weights(os.path.join(out_dir,'weights.h5'))
+    model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
+if args.save_model:
+    with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
+        f.write(model.to_json())
 if args.save_prediction:
-    print('SAVE PREDICTIONS')
-    k = args.save_prediction
-    batch_size = x_test.shape[0]//100
-    IND_DIR = os.path.join(out_dir,'prediction_{}_ind.txt'.format(k))
-    LOGITS_DIR = os.path.join(out_dir,'prediction_{}_logits.txt'.format(k))
-    f_ind = open(IND_DIR,'ab')
-    f_logits = open(LOGITS_DIR,'ab')
-    s = x_test.shape[0]
-    clk.tic()
-    for i,start in enumerate(range(0,s,batch_size)):
-        end = min(start+batch_size,s)
-        x_batch = x_test[start:end,:]
-        out_probs = model.predict(x_batch)
-        ind = np.argsort(out_probs,axis=1)[:,-k:]
-        ind = ind[:,::-1]
-        logits = np.take_along_axis(out_probs, ind, axis=1)
-        np.savetxt(f_ind,ind,fmt='%d')
-        np.savetxt(f_logits,logits,fmt='%1.3f')
-        print('{:0.0f}% {}'.format(end/s*100,clk.toc(False)),end='\r')
-    f_ind.close()
-    f_logits.close()
-csv_path = os.path.join(out_dir,'args.csv')
-pd.DataFrame.from_dict([vars(args)]).to_csv(csv_path)
+    save_predictions(model,x_test,y_tests,OUT_DIR)
+pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))
+
+
