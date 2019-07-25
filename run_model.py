@@ -206,6 +206,8 @@ def pAt5(y_true,y_pred):
 def save_predictions(model,x_test,y_tests,out_dir):
     print('SAVE PREDICTIONS TO : {}'.format(out_dir))
     out_probs = model.predict(x_test,verbose=1)
+    if len(y_tests)==1:
+        out_probs = [out_probs]
     ind_dirs = [os.path.join(out_dir,'pred_outputs{}.txt'.format(i)) for i in range(len(y_tests))]
     log_dirs = [os.path.join(out_dir,'pred_logits{}.txt'.format(i)) for i in range(len(y_tests))]
     f_ind = [open(ind_dir,'ab') for ind_dir in ind_dirs]
