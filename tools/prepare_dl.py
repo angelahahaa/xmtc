@@ -18,7 +18,6 @@ parser.add_argument('-o','--output',required = True,help='output directory for d
 parser.add_argument('--max_sequence_length',type=int,default = 500)
 parser.add_argument('--max_num_words',type=int,default = 50000)
 parser.add_argument('--clean_text',default = False, action='store_true')
-parser.add_argument('--layers',type=int,default=0,help='clip layers (remove train/test samples that has less than clipped layers)')
 args = parser.parse_args()
 
 # things
@@ -45,28 +44,17 @@ train_df = df[df['train/test']=='train']
 test_df = df[df['train/test']=='test']
 # get labels
 print('BUILD MULTILABELBINARIZER')
-if args.layers:
-    for n in range(args.layers):
-        header = 'cat{}'.format(n)
-        mlb = MultiLabelBinarizer(sparse_output=True)
-        mlb.fit(df[header])
-        y_train = mlb.transform(train_df[header].values)
-        y_test = mlb.transform(test_df[header].values)
-        scipy.sparse.save_npz('{}/y_train_{}.npz'.format(OUT_DIR,n),y_train)
-        scipy.sparse.save_npz('{}/y_test_{}.npz'.format(OUT_DIR,n),y_test)
-        with open('{}/mlb_{}.pkl'.format(OUT_DIR,n),'wb') as f:
-            pickle.dump(mlb,f, protocol=pickle.HIGHEST_PROTOCOL)
-else:
+headers = [n for n in df.columns if n.startswith('cat') and len(n)<5] + ['hierarchy']
+print(headers)
+for header in headers:
     mlb = MultiLabelBinarizer(sparse_output=True)
-    mlb.fit(df['categories'].values)
-    y_train = mlb.transform(train_df['categories'].values)
-    y_test = mlb.transform(test_df['categories'].values)
-    print('Found {} classes'.format(len(mlb.classes_)))
-
-    with open('{}/mlb.pkl'.format(OUT_DIR),'wb') as f:
+    mlb.fit(df[header])
+    y_train = mlb.transform(train_df[header].values)
+    y_test = mlb.transform(test_df[header].values)
+    scipy.sparse.save_npz('{}/y_train_{}.npz'.format(OUT_DIR,header),y_train)
+    scipy.sparse.save_npz('{}/y_test_{}.npz'.format(OUT_DIR,header),y_test)
+    with open('{}/mlb_{}.pkl'.format(OUT_DIR,header),'wb') as f:
         pickle.dump(mlb,f, protocol=pickle.HIGHEST_PROTOCOL)
-    scipy.sparse.save_npz('{}/y_train.npz'.format(OUT_DIR),y_train)
-    scipy.sparse.save_npz('{}/y_test.npz'.format(OUT_DIR),y_test)
 # build tokenizer
 print('BUILD TOKENIZER')
 tokenizer = Tokenizer(

@@ -46,8 +46,9 @@ def Coloured(string):
 parser = argparse.ArgumentParser(description = 'run baseline models')
 parser.add_argument('-i','--input', required = True, type = str, help = 'input directory e.g. ./data/dl_amazon_1/')
 parser.add_argument('-m','--model', required = True, type = str, help = 'model, one in: xmlcnn, attentionxml, attention,')
-parser.add_argument('-l','--loss', default = 'categorical', type = str, help = "loss type, categorical or binary ")
-parser.add_argument('-o','--output', default = 'outputs', type = str, help = 'output directory')
+parser.add_argument('-l','--loss', required = True, type = str, help = "loss type, categorical or binary ")
+parser.add_argument('-o','--output', required = True, type = str, help = 'output directory')
+parser.add_argument('--mode', required = True, type = str, help = 'cat,hierarchy')
 parser.add_argument('--epoch', default = 5, type = int, help = 'epochs')
 parser.add_argument('--batch_size', default = 0, type = int, help = 'batch size')
 parser.add_argument('--save_weights', default = True, action = 'store_true', help = 'save trained weights')
@@ -59,12 +60,19 @@ args = parser.parse_args()
 default_batch_size = {'xmlcnn':128,'attentionxml':20,'attention':25}
 if not os.path.exists(args.input):
     raise Exception('Input path does not exist: {}'.format(args.input))
+if args.model not in default_batch_size.keys():
+    raise Exception('Unknown model: {}'.format(args.model))
+if args.loss not in ['binary','categorical']:
+    raise Exception('Unknown loss: {}'.format(args.loss))
+if args.mode not in ['caat','hierarchy']:
+    raise Exception('Unknown mode: {}'.formate(args.mode))
+
+IN_DIR = args.input
+if not args.batch_size:
+    args.batch_size = default_batch_size[args.model]
 if not os.path.exists(args.output):
     os.mkdir(args.output)
     print(Coloured("Create Output Directory: {}".format(args.output)))
-if not args.batch_size:
-    args.batch_size = default_batch_size[args.model]
-IN_DIR = args.input
 OUT_DIR = os.path.join(
     args.output,
     datetime.datetime.now().strftime('%y%m%d_%H%M%S_{}'.format(args.model)),
@@ -78,13 +86,13 @@ if not os.path.exists(OUT_DIR):
 
 
 
-def get_input(in_dir):
+def get_input(in_dir,mode):
     x_train = np.load(os.path.join(in_dir,'x_train.npy'))
-    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_train')]
+    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_train_{}'.format(mode))]
     y_trains = [scipy.sparse.load_npz(d).todense() for d in dirs]
 
     x_test = np.load(os.path.join(in_dir,'x_test.npy'))
-    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_test')]
+    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_test_{}'.format(mode))]
     y_tests = [scipy.sparse.load_npz(d).todense() for d in dirs]
     return x_train,y_trains,x_test,y_tests
 
@@ -222,15 +230,15 @@ x_train,y_trains,x_test,y_tests = get_input(IN_DIR)
 _,max_sequence_length = x_train.shape
 labels_dims = [l.shape[-1] for l in y_tests]
 model = get_model(args.model, max_sequence_length, labels_dims)
-model.compile(loss=loss_dict[args.loss],
-              optimizer='adam',
-              metrics=[pAt1,pAt5])
+model.compile(loss = loss_dict[args.loss],
+              optimizer = 'adam',
+              metrics = [pAt1,pAt5])
 model.fit(x_train, y_trains,
           batch_size = args.batch_size,
           epochs = args.epoch,
           validation_data = (x_test, y_tests),
           callbacks = [csv_logger],
-          shuffle=True,
+          shuffle = True,
          )
 
 
@@ -247,5 +255,3 @@ if args.save_model:
 if args.save_prediction:
     save_predictions(model,x_test,y_tests,OUT_DIR)
 pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))
-
-
