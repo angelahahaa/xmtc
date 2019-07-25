@@ -226,7 +226,7 @@ def save_predictions(model,x_test,y_tests,out_dir):
 
 csv_logger = CSVLogger(os.path.join(OUT_DIR,'train.log'),append=False)
 # inputs
-x_train,y_trains,x_test,y_tests = get_input(IN_DIR)
+x_train,y_trains,x_test,y_tests = get_input(IN_DIR,args.mode)
 _,max_sequence_length = x_train.shape
 labels_dims = [l.shape[-1] for l in y_tests]
 model = get_model(args.model, max_sequence_length, labels_dims)
