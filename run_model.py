@@ -64,8 +64,8 @@ if args.model not in default_batch_size.keys():
     raise Exception('Unknown model: {}'.format(args.model))
 if args.loss not in ['binary','categorical']:
     raise Exception('Unknown loss: {}'.format(args.loss))
-if args.mode not in ['caat','hierarchy']:
-    raise Exception('Unknown mode: {}'.formate(args.mode))
+if args.mode not in ['cat','hierarchy']:
+    raise Exception('Unknown mode: {}'.format(args.mode))
 
 IN_DIR = args.input
 if not args.batch_size:
