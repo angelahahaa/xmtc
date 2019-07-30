@@ -83,3 +83,15 @@ def clean_str(text):
 #     string = re.sub(r"\?", " \! ", string)
 #     string = re.sub(r"\s{2,}", " ", string)
 #     return string.strip().lower()
+
+def clean_sic(text):
+    text = text.replace("\\n"," ")
+    text = text.replace("\\r"," ")
+    text = text.replace("\\t"," ")
+    text = text.replace("-"," - ")
+    text = text.replace("\\"," ")
+    text = text.replace("£"," £ ")
+    text = text.replace("€"," € ")
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    return ' '.join(word_tokenize(text)).lower()

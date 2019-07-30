@@ -32,7 +32,7 @@ from tools.model_func import *
 parser = argparse.ArgumentParser(description = 'run baseline models')
 parser.add_argument('-i','--input', required = True, type = str, help = 'input directory e.g. ./data/dl_amazon_1/')
 parser.add_argument('-m','--model', required = True, type = str, help = 'model, one in: xmlcnn, attentionxml, attention,')
-parser.add_argument('-l','--loss', required = True, type = str, help = "loss type, categorical or binary ")
+parser.add_argument('-l','--loss', required = True, type = str, help = "loss type: categorical, binary, masked_categorical ")
 parser.add_argument('-o','--output', required = True, type = str, help = 'output directory')
 parser.add_argument('--mode', required = True, type = str, help = 'cat,hierarchy')
 parser.add_argument('--epoch', default = 5, type = int, help = 'epochs')
@@ -40,6 +40,7 @@ parser.add_argument('--batch_size', default = 0, type = int, help = 'batch size'
 parser.add_argument('--save_weights', default = True, action = 'store_true', help = 'save trained weights')
 parser.add_argument('--save_model', default = True, action = 'store_true', help = 'save trained model architecture')
 parser.add_argument('--save_prediction', default = True, action = 'store_true', help = 'save top 10 prediction and corresponding probabilities (not implemented yet)')
+parser.add_argument('--gpu', default = '', type = str, help = 'GPU id to use')
 args = parser.parse_args()
 
 # argparse validation
@@ -48,7 +49,7 @@ if not os.path.exists(args.input):
     raise Exception('Input path does not exist: {}'.format(args.input))
 if args.model not in default_batch_size.keys():
     raise Exception('Unknown model: {}'.format(args.model))
-if args.loss not in ['binary','categorical']:
+if args.loss not in ['binary','categorical','masked_categorical']:
     raise Exception('Unknown loss: {}'.format(args.loss))
 if args.mode not in ['cat','hierarchy']:
     raise Exception('Unknown mode: {}'.format(args.mode))
@@ -66,6 +67,10 @@ OUT_DIR = os.path.join(
 if not os.path.exists(OUT_DIR):
     os.mkdir(OUT_DIR)
 
+if args.gpu:
+    print(Coloured("USE GPU: {}".format(args.gpu)))
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
 
 
 
@@ -78,6 +83,10 @@ if not os.path.exists(OUT_DIR):
 csv_logger = CSVLogger(os.path.join(OUT_DIR,'train.log'),append=False)
 # inputs
 x_train,y_trains,x_test,y_tests = get_input(IN_DIR,args.mode)
+if args.loss.startswith('masked'):
+    print(Coloured("MASKING INPUT"))
+    y_trains = mask_ys(y_trains,IN_DIR)
+    y_tests = mask_ys(y_tests,IN_DIR)
 _,max_sequence_length = x_train.shape
 labels_dims = [l.shape[-1] for l in y_tests]
 # model
@@ -86,7 +95,11 @@ model = get_model(model_name = args.model,
                   max_sequence_length = max_sequence_length,
                   labels_dims = labels_dims,
                   embedding_layer = embedding_layer)
-# train 
+# train
+loss_dict = {'binary':binary_cross_entropy_with_logits,
+             'categorical':categorical_cross_entropy_with_logits,
+             'masked_categorical':masked_categorical_cross_entropy_with_logits,
+             }
 model.compile(loss = loss_dict[args.loss],
               optimizer = 'adam',
               metrics = [pAt1,pAt5])
@@ -97,7 +110,6 @@ model.fit(x_train, y_trains,
           callbacks = [csv_logger],
           shuffle = True,
          )
-
 
 # # save things
 

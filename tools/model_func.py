@@ -5,6 +5,7 @@ import os,datetime
 # data input
 import numpy as np
 import scipy.sparse
+import pickle
 # metric and loss function
 import keras.backend as K
 import tensorflow as tf
@@ -25,15 +26,35 @@ def Coloured(string):
 # # INPUT
 
 
-def get_input(in_dir,mode):
+def get_input(in_dir, mode, sparse = False):
     x_train = np.load(os.path.join(in_dir,'x_train.npy'))
     dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_train_{}'.format(mode))]
-    y_trains = [scipy.sparse.load_npz(d).todense() for d in dirs]
+    y_trains = [scipy.sparse.load_npz(d) for d in dirs]
 
     x_test = np.load(os.path.join(in_dir,'x_test.npy'))
     dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_test_{}'.format(mode))]
-    y_tests = [scipy.sparse.load_npz(d).todense() for d in dirs]
+    y_tests = [scipy.sparse.load_npz(d) for d in dirs]
+
+    if not sparse:
+        y_trains = [y.toarray() for y in y_trains]
+        y_tests = [y.toarray() for y in y_tests]
     return x_train,y_trains,x_test,y_tests
+
+def mask_ys(y_trues,in_dir):
+    # slow an stupid way to mask non important values to -1
+    ds = pickle.load(open(os.path.join(in_dir,'child_to_siblings.pkl'),'rb'))
+    outs = [y_trues[0]]
+    for i,y in enumerate(y_trues):
+        if i==0:
+            continue
+        d = ds[i]
+        y_true = y.argmax(axis=1).flatten()
+        out = -np.ones(shape=y.shape)
+        for j,yt in enumerate(y_true):
+            out[j,d[yt]]=0
+            out[j,yt]=1
+        outs.append(out)
+    return outs
 
 
 # # EMBEDDING LAYER
@@ -119,8 +140,10 @@ def binary_cross_entropy_with_logits(y_true, y_pred):
     return K.mean(K.binary_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
 def categorical_cross_entropy_with_logits(y_true, y_pred):
     return K.mean(K.categorical_crossentropy(y_true,y_pred,from_logits=True),axis=-1)
-loss_dict = {'binary':binary_cross_entropy_with_logits,
-             'categorical':categorical_cross_entropy_with_logits,}
+def masked_categorical_cross_entropy_with_logits(y_true, y_pred):
+    y_pred = tf.where(K.not_equal(y_true, -1), y_pred, -1e7*tf.ones_like(y_pred))
+    loss = K.categorical_crossentropy(tf.maximum(y_true,0.) ,y_pred, from_logits=True)
+    return K.mean(loss,axis=-1)
 
 
 # # METRICS
