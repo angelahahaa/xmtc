@@ -26,18 +26,23 @@ def Coloured(string):
 # # INPUT
 
 
-def get_input(in_dir, mode, sparse = False):
-    x_train = np.load(os.path.join(in_dir,'x_train.npy'))
-    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_train_{}'.format(mode))]
-    y_trains = [scipy.sparse.load_npz(d) for d in dirs]
-
-    x_test = np.load(os.path.join(in_dir,'x_test.npy'))
-    dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_test_{}'.format(mode))]
-    y_tests = [scipy.sparse.load_npz(d) for d in dirs]
-
-    if not sparse:
-        y_trains = [y.toarray() for y in y_trains]
-        y_tests = [y.toarray() for y in y_tests]
+def get_input(in_dir, mode, sparse = False, get_output = [True]*4):
+    # get_output: bool of get this var ['x_train','y_trains','x_test','y_tests']
+    x_train,y_trains,x_test,y_tests = [None]*4
+    if get_output[0]:
+        x_train = np.load(os.path.join(in_dir,'x_train.npy'))
+    if get_output[1]:
+        dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_train_{}'.format(mode))]
+        y_trains = [scipy.sparse.load_npz(d) for d in dirs]
+        if not sparse:
+            y_trains = [y.toarray() for y in y_trains]
+    if get_output[2]:
+        x_test = np.load(os.path.join(in_dir,'x_test.npy'))
+    if get_output[3]:
+        dirs = [os.path.join(in_dir,d) for d in sorted(os.listdir(in_dir)) if d.startswith('y_test_{}'.format(mode))]
+        y_tests = [scipy.sparse.load_npz(d) for d in dirs]
+        if not sparse:
+            y_tests = [y.toarray() for y in y_tests]
     return x_train,y_trains,x_test,y_tests
 
 def mask_ys(y_trues,in_dir):
