@@ -42,6 +42,7 @@ if args.clean_text:
 # train val split
 train_df = df[df['train/test']=='train']
 test_df = df[df['train/test']=='test']
+df = df[df['train/test'].isin(['train','test'])]
 # get labels
 print('BUILD MULTILABELBINARIZER')
 headers = [n for n in df.columns if n.startswith('cat') and len(n)<5] + ['hierarchy']
