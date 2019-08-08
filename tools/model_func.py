@@ -7,17 +7,17 @@ import numpy as np
 import scipy.sparse
 import pickle
 # metric and loss function
-import keras.backend as K
 import tensorflow as tf
-from keras.metrics import categorical_accuracy, binary_accuracy, top_k_categorical_accuracy
+import tensorflow.keras.backend as K
+from tensorflow.keras.metrics import categorical_accuracy, binary_accuracy, top_k_categorical_accuracy
 # embedding
-from keras.initializers import Constant
-from keras.layers import Embedding
+from tensorflow.keras.initializers import Constant
+from tensorflow.keras.layers import Embedding
 # models
-from keras.layers import Dense, Input, Flatten, Concatenate, Conv1D, MaxPooling1D, Dropout
-from keras.layers import CuDNNLSTM, Bidirectional, TimeDistributed, Lambda, Softmax
-from keras.initializers import Constant
-from keras.models import Model
+from tensorflow.keras.layers import Dense, Input, Flatten, Concatenate, Conv1D, MaxPooling1D, Dropout
+from tensorflow.keras.layers import CuDNNLSTM, Bidirectional, TimeDistributed, Lambda, Softmax
+from tensorflow.keras.initializers import Constant
+from tensorflow.keras.models import Model
 
 
 def Coloured(string):
@@ -44,6 +44,21 @@ def get_input(in_dir, mode, sparse = False, get_output = [True]*4):
         if not sparse:
             y_tests = [y.toarray() for y in y_tests]
     return x_train,y_trains,x_test,y_tests
+
+def get_bert_input(in_dir,mode):
+    df = pd.read_pickle(os.path.join(in_dir,'bert_x.pkl'))
+    train_df = df[df['train/test']=='train']
+    test_df = df[df['train/test']=='test']
+    train_sequence = train_df['sequence'].to_list()
+    train_mask = train_df['mask'].to_list()
+    train_segment = [[0]*len(train_mask[0]) ]*len(train_mask)
+    test_sequence = test_df['sequence'].to_list()
+    test_mask = test_df['mask'].to_list()
+    test_segment = [[0]*len(test_mask[0]) ]*len(test_mask)
+    x_trains = [train_sequence,train_mask,train_segment]
+    x_tests = [test_sequence,test_mask,test_segment]
+    _,y_trains,_,y_tests = get_input(in_dir, mode, get_output=[0,1,0,1])
+    return x_trains, y_trains, x_tests, y_tests
 
 def mask_ys(y_trues,in_dir):
     # slow an stupid way to mask non important values to -1
@@ -75,6 +90,107 @@ def get_embedding_layer(in_dir):
                                 embeddings_initializer=Constant(embedding_matrix),
                                 trainable=False)
     return embedding_layer
+
+## BERT LAYER
+
+class BertLayer(Layer):
+    def __init__(
+        self,
+        n_fine_tune_layers=10,
+        pooling="first",
+        bert_path="https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1",
+        **kwargs,
+    ):
+        self.n_fine_tune_layers = n_fine_tune_layers
+        self.trainable = True
+        self.output_dim = 768
+        self.pooling = pooling
+        self.bert_path = bert_path
+        if self.pooling not in ["first", "mean"]:
+            raise NameError(
+                f"Undefined pooling type (must be either first or mean, but is {self.pooling}"
+            )
+
+        super(BertLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.bert = hub.Module(
+            self.bert_path, trainable=self.trainable, name=f"{self.name}_module"
+        )
+
+        # Remove unused layers
+        trainable_vars = self.bert.variables
+        if self.pooling == "first":
+            trainable_vars = [var for var in trainable_vars if not "/cls/" in var.name]
+            trainable_layers = ["pooler/dense"]
+
+        elif self.pooling == "mean":
+            trainable_vars = [
+                var
+                for var in trainable_vars
+                if not "/cls/" in var.name and not "/pooler/" in var.name
+            ]
+            trainable_layers = []
+        else:
+            raise NameError(
+                f"Undefined pooling type (must be either first or mean, but is {self.pooling}"
+            )
+
+        # Select how many layers to fine tune
+        for i in range(self.n_fine_tune_layers):
+            trainable_layers.append(f"encoder/layer_{str(11 - i)}")
+
+        # Update trainable vars to contain only the specified layers
+        trainable_vars = [
+            var
+            for var in trainable_vars
+            if any([l in var.name for l in trainable_layers])
+        ]
+
+        # Add to trainable weights
+        for var in trainable_vars:
+            self._trainable_weights.append(var)
+
+        for var in self.bert.variables:
+            if var not in self._trainable_weights:
+                self._non_trainable_weights.append(var)
+
+        super(BertLayer, self).build(input_shape)
+
+    def call(self, inputs):
+        inputs = [K.cast(x, dtype="int32") for x in inputs]
+        input_ids, input_mask, segment_ids = inputs
+        bert_inputs = dict(
+            input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids
+        )
+        if self.pooling == "first":
+            pooled = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)[
+                "pooled_output"
+            ]
+        elif self.pooling == "mean":
+            result = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)[
+                "sequence_output"
+            ]
+
+            mul_mask = lambda x, m: x * tf.expand_dims(m, axis=-1)
+            masked_reduce_mean = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1) / (
+                    tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
+            input_mask = tf.cast(input_mask, tf.float32)
+            pooled = masked_reduce_mean(result, input_mask)
+        else:
+            raise NameError(f"Undefined pooling type (must be either first or mean, but is {self.pooling}")
+
+        return pooled
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.output_dim)
+
+
+def initialize_vars(sess):
+    sess.run(tf.local_variables_initializer())
+    sess.run(tf.global_variables_initializer())
+    sess.run(tf.tables_initializer())
+    K.set_session(sess)
 
 
 # # MODELS
@@ -135,7 +251,20 @@ def get_model(model_name, max_sequence_length, labels_dims, embedding_layer):
         raise Exception('Invalid model_name : {}'.format(model_name))
     return Model(sequence_input, outs)
 
-
+def get_bert_model(max_sequence_length, labels_dims, bottle_neck, trainable_layers):
+    bert_inputs = [
+        Input(shape=(max_sequence_length,), name="input_sequence"),
+        Input(shape=(max_sequence_length,), name="input_mask"),
+        Input(shape=(max_sequence_length,), name="input_segment"),
+    ]
+    x = BertLayer(n_fine_tune_layers = trainable_layers, pooling="first")(bert_inputs)
+    if bottle_neck:
+        x = Dense(bottle_neck, activation='relu')(x)
+        x = Dropout(0.5)(x)
+    outs = []
+    for i,labels_dim in enumerate(labels_dims):
+        outs.append(Dense(labels_dim, activation = None, name = 'H{}'.format(i))(x))
+    return Model(inputs=bert_inputs, outputs=outs)
 # # LOSSES
 
 
