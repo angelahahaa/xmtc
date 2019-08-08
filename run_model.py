@@ -12,7 +12,7 @@ import os,datetime
 
 # save things
 import pandas as pd
-from keras.callbacks import CSVLogger
+from tensorflow.keras.callbacks import CSVLogger
 
 # model_func
 from tools.model_func import *
@@ -83,7 +83,6 @@ if args.gpu:
 
 
 
-csv_logger = CSVLogger(os.path.join(OUT_DIR,'train.log'),append=False)
 # inputs
 if args.model == 'bert':
     x_train,y_trains,x_test,y_tests = get_bert_input(IN_DIR,args.mode)
@@ -98,46 +97,46 @@ if args.loss.startswith('masked'):
 
 labels_dims = [l.shape[-1] for l in y_tests]
 # model
-if args.model == 'bert':
-    sess = tf.Session()
-    initialize_vars(sess)
-    K.set_session(sess)
-    model = get_bert_model(max_sequence_length, labels_dims,
-                        bottle_neck = args.bert_bottle_neck,
-                        trainable_layers = args.trainable_layers,
-                        )
-else:
-    embedding_layer = get_embedding_layer(IN_DIR)
-    model = get_model(model_name = args.model,
-                      max_sequence_length = max_sequence_length,
-                      labels_dims = labels_dims,
-                      embedding_layer = embedding_layer)
-# train
-loss_dict = {'binary':binary_cross_entropy_with_logits,
-             'categorical':categorical_cross_entropy_with_logits,
-             'masked_categorical':masked_categorical_cross_entropy_with_logits,
-             }
-model.compile(loss = loss_dict[args.loss],
-              optimizer = 'adam',
-              metrics = [pAt1,pAt5])
-model.fit(x_train, y_trains,
-          batch_size = args.batch_size,
-          epochs = args.epoch,
-          validation_data = (x_test, y_tests),
-          callbacks = [csv_logger],
-          shuffle = True,
-         )
+with tf.Session() as sess:
+    csv_logger = CSVLogger(os.path.join(OUT_DIR,'train.log'),append=False)
+    if args.model == 'bert':
+        model = get_bert_model(max_sequence_length, labels_dims,
+                            bottle_neck = args.bert_bottle_neck,
+                            trainable_layers = args.bert_trainable_layers,
+                            sess = sess,
+                            )
+    else:
+        embedding_layer = get_embedding_layer(IN_DIR)
+        model = get_model(model_name = args.model,
+                          max_sequence_length = max_sequence_length,
+                          labels_dims = labels_dims,
+                          embedding_layer = embedding_layer)
+    # train
+    loss_dict = {'binary':binary_cross_entropy_with_logits,
+                 'categorical':categorical_cross_entropy_with_logits,
+                 'masked_categorical':masked_categorical_cross_entropy_with_logits,
+                 }
+    model.compile(loss = loss_dict[args.loss],
+                  optimizer = 'adam',
+                  metrics = [pAt1,pAt5])
+    model.fit(x_train, y_trains,
+              batch_size = args.batch_size,
+              epochs = args.epoch,
+              validation_data = (x_test, y_tests),
+              callbacks = [csv_logger],
+              shuffle = True,
+             )
 
-# # save things
-
-
+    # # save things
 
 
-if args.save_weights:
-    model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
-if args.save_model:
-    with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
-        f.write(model.to_json())
-if args.save_prediction:
-    save_predictions(model,x_test,y_tests,OUT_DIR)
+
+
+    if args.save_weights:
+        model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
+    if args.save_model:
+        with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
+            f.write(model.to_json())
+    if args.save_prediction:
+        save_predictions(model,x_test,y_tests,OUT_DIR)
 pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))

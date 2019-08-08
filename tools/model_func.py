@@ -3,6 +3,7 @@ import argparse
 import os,datetime
 
 # data input
+import pandas as pd
 import numpy as np
 import scipy.sparse
 import pickle
@@ -14,6 +15,8 @@ from tensorflow.keras.metrics import categorical_accuracy, binary_accuracy, top_
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.layers import Embedding
 # models
+import tensorflow_hub as hub
+from tensorflow.keras.layers import Layer
 from tensorflow.keras.layers import Dense, Input, Flatten, Concatenate, Conv1D, MaxPooling1D, Dropout
 from tensorflow.keras.layers import CuDNNLSTM, Bidirectional, TimeDistributed, Lambda, Softmax
 from tensorflow.keras.initializers import Constant
@@ -251,7 +254,7 @@ def get_model(model_name, max_sequence_length, labels_dims, embedding_layer):
         raise Exception('Invalid model_name : {}'.format(model_name))
     return Model(sequence_input, outs)
 
-def get_bert_model(max_sequence_length, labels_dims, bottle_neck, trainable_layers):
+def get_bert_model(max_sequence_length, labels_dims, bottle_neck, trainable_layers, sess):
     bert_inputs = [
         Input(shape=(max_sequence_length,), name="input_sequence"),
         Input(shape=(max_sequence_length,), name="input_mask"),
@@ -264,6 +267,7 @@ def get_bert_model(max_sequence_length, labels_dims, bottle_neck, trainable_laye
     outs = []
     for i,labels_dim in enumerate(labels_dims):
         outs.append(Dense(labels_dim, activation = None, name = 'H{}'.format(i))(x))
+    initialize_vars(sess)
     return Model(inputs=bert_inputs, outputs=outs)
 # # LOSSES
 
