@@ -111,13 +111,18 @@ with tf.Session() as sess:
                           max_sequence_length = max_sequence_length,
                           labels_dims = labels_dims,
                           embedding_layer = embedding_layer)
+    model.summary()
     # train
     loss_dict = {'binary':binary_cross_entropy_with_logits,
                  'categorical':categorical_cross_entropy_with_logits,
                  'masked_categorical':masked_categorical_cross_entropy_with_logits,
                  }
+    if args.model == 'bert':
+        optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5)
+    else:
+        optimizer = 'adam'
     model.compile(loss = loss_dict[args.loss],
-                  optimizer = 'adam',
+                  optimizer = optimizer,
                   metrics = [pAt1,pAt5])
     model.fit(x_train, y_trains,
               batch_size = args.batch_size,
