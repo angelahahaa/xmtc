@@ -43,7 +43,7 @@ parser.add_argument('--save_prediction', default = True, action = 'store_true', 
 parser.add_argument('--gpu', default = '', type = str, help = 'GPU id to use')
 parser.add_argument('--bert_bottle_neck', default = 512, type = int, help = 'bottle neck dim for bert, 0 implies no bottle neck layer')
 parser.add_argument('--bert_trainable_layers', default = 10, type = int, help = 'number of trainable layers in bert ')
-
+parser.add_argument('--val', default = False, action = 'store_true',help = 'use validation set')
 args = parser.parse_args()
 
 # argparse validation
@@ -78,6 +78,7 @@ if args.gpu:
 
 
 
+
 # # MAIN
 
 
@@ -85,63 +86,89 @@ if args.gpu:
 
 # inputs
 if args.model == 'bert':
-    x_train,y_trains,x_test,y_tests = get_bert_input(IN_DIR,args.mode)
-    max_sequence_length = len(x_train[0][0])
+    x_trains,y_trains,x_tests,y_tests = get_bert_input(IN_DIR,args.mode)
 else:
-    x_train,y_trains,x_test,y_tests = get_input(IN_DIR,args.mode)
-    max_sequence_length = x_train.shape[1]
+    x_trains,y_trains,x_tests,y_tests = get_input(IN_DIR,args.mode)
 if args.loss.startswith('masked'):
     print(Coloured("MASKING INPUT"))
     y_trains = mask_ys(y_trains,IN_DIR)
     y_tests = mask_ys(y_tests,IN_DIR)
-
+max_sequence_length = len(x_trains[0][0])
 labels_dims = [l.shape[-1] for l in y_tests]
-# model
-with tf.Session() as sess:
-    csv_logger = CSVLogger(os.path.join(OUT_DIR,'train.log'),append=False)
-    if args.model == 'bert':
-        model = get_bert_model(max_sequence_length, labels_dims,
-                            bottle_neck = args.bert_bottle_neck,
-                            trainable_layers = args.bert_trainable_layers,
-                            sess = sess,
-                            )
-    else:
-        embedding_layer = get_embedding_layer(IN_DIR)
-        model = get_model(model_name = args.model,
-                          max_sequence_length = max_sequence_length,
-                          labels_dims = labels_dims,
-                          embedding_layer = embedding_layer)
-    model.summary()
-    # train
-    loss_dict = {'binary':binary_cross_entropy_with_logits,
-                 'categorical':categorical_cross_entropy_with_logits,
-                 'masked_categorical':masked_categorical_cross_entropy_with_logits,
-                 }
-    if args.model == 'bert':
-        optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5)
-    else:
-        optimizer = 'adam'
-    model.compile(loss = loss_dict[args.loss],
-                  optimizer = optimizer,
-                  metrics = [pAt1,pAt5])
-    model.fit(x_train, y_trains,
-              batch_size = args.batch_size,
-              epochs = args.epoch,
-              validation_data = (x_test, y_tests),
-              callbacks = [csv_logger],
-              shuffle = True,
-             )
 
-    # # save things
+if args.val:
+    print(Coloured("Use Validation"))
+    x_trains,y_trains,x_vals,y_vals = get_unbiased_train_val_split(x_trains,y_trains,IN_DIR)
+else:
+    x_vals,y_vals = x_tests,y_tests
 
+# loss
+loss_dict = {'binary':binary_cross_entropy_with_logits,
+             'categorical':categorical_cross_entropy_with_logits,
+             'masked_categorical':masked_categorical_cross_entropy_with_logits,
+            }
 
+# callbacks
+callbacks = []
+csv_log_dir = os.path.join(OUT_DIR,'train.log')
+callbacks.append(CSVLogger(csv_log_dir,append=False))
 
+# optimizers
+if args.model == 'bert':
+    optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5)
+else:
+    optimizer = 'adam'
 
-    if args.save_weights:
-        model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
-    if args.save_model:
-        with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
-            f.write(model.to_json())
-    if args.save_prediction:
-        save_predictions(model,x_test,y_tests,OUT_DIR)
+# build model
+sess = tf.Session()
+if args.model == 'bert':
+    model = get_bert_model(max_sequence_length, labels_dims,
+                        bottle_neck = args.bert_bottle_neck,
+                        trainable_layers = args.bert_trainable_layers,
+                        sess = sess,
+                        )
+else:
+    embedding_layer = get_embedding_layer(IN_DIR)
+    model = get_model(model_name = args.model,
+                      max_sequence_length = max_sequence_length,
+                      labels_dims = labels_dims,
+                      embedding_layer = embedding_layer)
+# print summary
+model.summary()
+
+# compile
+model.compile(loss = loss_dict[args.loss],
+              optimizer = optimizer,
+              metrics = [pAt1,pAt5])
+# train
+print(Coloured("TRAIN"))
+model.fit(x_trains, y_trains,
+          batch_size = args.batch_size,
+          epochs = args.epoch,
+          validation_data = (x_vals, y_vals),
+          callbacks = callbacks,
+          shuffle = True,
+         )
+# evaluate
+if args.val:
+    print(Coloured("EVALUATE"))
+    test_results = model.evaluate(x_tests,y_tests)
+    dd = {k:v for k,v in zip(model.metrics_names,test_results)}
+    dd['epoch']= 'evaluate'
+    df = pd.read_csv(csv_log_dir)
+    df = df.append(dd,ignore_index=True)
+    df.to_csv(csv_log_dir,index = False)
+
+# # save things
+
+if args.save_weights:
+    model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
+if args.save_model:
+    with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
+        f.write(model.to_json())
+if args.save_prediction:
+    save_predictions(model,x_tests,y_tests,OUT_DIR)
 pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))
+
+# close Session
+sess.close()

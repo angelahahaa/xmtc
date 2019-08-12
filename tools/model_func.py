@@ -46,7 +46,7 @@ def get_input(in_dir, mode, sparse = False, get_output = [True]*4):
         y_tests = [scipy.sparse.load_npz(d) for d in dirs]
         if not sparse:
             y_tests = [y.toarray() for y in y_tests]
-    return x_train,y_trains,x_test,y_tests
+    return [x_train],y_trains,[x_test],y_tests
 
 def get_bert_input(in_dir,mode):
     df = pd.read_pickle(os.path.join(in_dir,'bert_x.pkl'))
@@ -59,7 +59,9 @@ def get_bert_input(in_dir,mode):
     test_mask = test_df['mask'].to_list()
     test_segment = [[0]*len(test_mask[0]) ]*len(test_mask)
     x_trains = [train_sequence,train_mask,train_segment]
+    x_trains = [np.array(x) for x in x_trains]
     x_tests = [test_sequence,test_mask,test_segment]
+    x_tests = [np.array(x) for x in x_tests]
     _,y_trains,_,y_tests = get_input(in_dir, mode, get_output=[0,1,0,1])
     return x_trains, y_trains, x_tests, y_tests
 
@@ -79,6 +81,47 @@ def mask_ys(y_trues,in_dir):
         outs.append(out)
     return outs
 
+def get_unbiased_train_val_split(x_trains,y_trains,in_dir,print_progress = True):
+    train_inds_dir = os.path.join(in_dir,'train_inds.npy')
+    val_inds_dir = os.path.join(in_dir,'val_inds.npy')
+
+    if not os.path.exists(train_inds_dir) or not os.path.exists(val_inds_dir):
+        print('SPLIT BY CLASS')
+        val_split=0.2
+        yt = np.concatenate(y_trains,axis=1)
+        too_small = []
+        train_inds = np.array([])
+        val_inds = np.array([])
+        for s in range(yt.shape[1]):
+            inds = np.argwhere(yt[:,s]).flatten()
+            if len(inds)<=1:
+                too_small.append(inds[0])
+                train_inds = np.append(train_inds,inds)
+                val_inds = np.append(val_inds,inds)
+            else:
+                split = int(len(inds)*val_split)
+                np.random.seed(s)
+                np.random.shuffle(inds)
+                train_inds = np.append(train_inds,inds[max(1,split):])
+                val_inds = np.append(val_inds,inds[:max(1,split)])
+            if print_progress and s%(yt.shape[1]//10)==0:
+                print("{:.0f}%".format((s+1)/yt.shape[1]*100),end='\r')
+        print("Duplicated inds: {}".format(len(too_small)))
+        train_inds = train_inds.astype(int)
+        val_inds = val_inds.astype(int)
+        np.save(train_inds_dir,train_inds)
+        np.save(val_inds_dir,val_inds)
+    else:
+        print('LOAD EXISTING VAL INDS')
+        train_inds = np.load(train_inds_dir)
+        val_inds = np.load(val_inds_dir)
+
+    x_vs = [x[val_inds,:] for x in x_trains]
+    y_vs = [y[val_inds,:] for y in y_trains]
+    x_ts = [x[train_inds,:] for x in x_trains]
+    y_ts = [y[train_inds,:] for y in y_trains]
+
+    return x_ts,y_ts,x_vs,y_vs
 
 # # EMBEDDING LAYER
 
