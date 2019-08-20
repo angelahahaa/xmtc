@@ -88,12 +88,14 @@ def get_unbiased_train_val_split(x_trains,y_trains,in_dir,print_progress = True)
     if not os.path.exists(train_inds_dir) or not os.path.exists(val_inds_dir):
         print('SPLIT BY CLASS')
         val_split=0.2
-        yt = np.concatenate(y_trains,axis=1)
+        sparse_ys = [np.argmax(y_train,axis=1) for y_train in y_trains]
+        yt = np.column_stack(sparse_ys)
+        unique_h,unique_inverse = np.unique(yt,return_inverse=True,axis=0)
         too_small = []
         train_inds = np.array([])
         val_inds = np.array([])
-        for s in range(yt.shape[1]):
-            inds = np.argwhere(yt[:,s]).flatten()
+        for s in range(len(unique_h)):
+            inds = np.argwhere(unique_inverse==s)
             if len(inds)<=1:
                 too_small.append(inds[0])
                 train_inds = np.append(train_inds,inds)
@@ -104,8 +106,8 @@ def get_unbiased_train_val_split(x_trains,y_trains,in_dir,print_progress = True)
                 np.random.shuffle(inds)
                 train_inds = np.append(train_inds,inds[max(1,split):])
                 val_inds = np.append(val_inds,inds[:max(1,split)])
-            if print_progress and s%(yt.shape[1]//10)==0:
-                print("{:.0f}%".format((s+1)/yt.shape[1]*100),end='\r')
+            if print_progress and s%(len(unique_h)//10)==0:
+                print("{:.0f}%".format((s+1)/len(unique_h)*100),end='\r')
         print("Duplicated inds: {}".format(len(too_small)))
         train_inds = train_inds.astype(int)
         val_inds = val_inds.astype(int)
