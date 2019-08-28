@@ -101,7 +101,8 @@ if args.val:
     x_trains,y_trains,x_vals,y_vals = get_unbiased_train_val_split(x_trains,y_trains,IN_DIR)
 else:
     x_vals,y_vals = x_tests,y_tests
-
+del x_tests
+del y_tests
 # loss
 loss_dict = {'binary':binary_cross_entropy_with_logits,
              'categorical':categorical_cross_entropy_with_logits,
@@ -152,6 +153,12 @@ model.fit(x_trains, y_trains,
 # evaluate
 if args.val:
     print(Coloured("EVALUATE"))
+    print('Get test data')
+    if args.model == 'bert':
+        _,_,x_tests,y_tests = get_bert_input(IN_DIR,args.mode)
+    else:
+        _,_,x_tests,y_tests = get_input(IN_DIR,args.mode,get_output = [0,0,1,1])
+    print('Run test')
     test_results = model.evaluate(x_tests,y_tests)
     dd = {k:v for k,v in zip(model.metrics_names,test_results)}
     dd['epoch']= 'evaluate'
