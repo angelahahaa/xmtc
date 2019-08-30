@@ -39,7 +39,7 @@ parser.add_argument('--epoch', default = 5, type = int, help = 'epochs')
 parser.add_argument('--batch_size', default = 0, type = int, help = 'batch size')
 parser.add_argument('--save_weights', default = True, action = 'store_true', help = 'save trained weights')
 parser.add_argument('--save_model', default = False, action = 'store_true', help = 'save trained model architecture')
-parser.add_argument('--save_prediction', default = True, action = 'store_true', help = 'save top 10 prediction and corresponding probabilities')
+parser.add_argument('--save_prediction', default = 1, type = int, help = 'save top 10 prediction and corresponding probabilities')
 parser.add_argument('--gpu', default = '', type = str, help = 'GPU id to use')
 parser.add_argument('--bert_bottle_neck', default = 512, type = int, help = 'bottle neck dim for bert, 0 implies no bottle neck layer')
 parser.add_argument('--bert_trainable_layers', default = 10, type = int, help = 'number of trainable layers in bert ')
@@ -174,7 +174,10 @@ if args.save_model:
     with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
         f.write(model.to_json())
 if args.save_prediction:
-    save_predictions(model,x_tests,y_tests,OUT_DIR)
+    if args.model == 'masked_categorical':
+        save_hs_predictions(model,x_test,y_tests,out_dir,IN_DIR)
+    else:
+        save_predictions(model,x_tests,y_tests,OUT_DIR)
 pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))
 
 # close Session

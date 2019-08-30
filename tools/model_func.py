@@ -363,3 +363,37 @@ def save_predictions(model,x_test,y_tests,out_dir):
         np.savetxt(f_log[i],logits,fmt='%1.3f')
     for f in f_ind + f_log:
         f.close()
+def save_hs_predictions(model,x_test,y_tests,out_dir,IN_DIR):
+    print('SAVE HS PREDICTIONS TO : {}'.format(out_dir))
+    out_logits = model.predict(x_test,verbose=1)
+    out_probs = get_cascade_sm(out_logits,IN_DIR)
+    if len(y_tests)==1:
+        out_probs = [out_probs]
+    ind_dirs = [os.path.join(out_dir,'pred_outputs{}.txt'.format(i)) for i in range(len(y_tests))]
+    prob_dirs = [os.path.join(out_dir,'pred_probs{}.txt'.format(i)) for i in range(len(y_tests))]
+    for i,out_prob in enumerate(out_probs):
+        ind = np.argsort(out_prob,axis=1)[:,:-11:-1]
+        probs = np.take_along_axis(out_prob, ind, axis=1)
+        np.savetxt(ind_dirs[i],ind,fmt='%d')
+        np.savetxt(prob_dirs[i],probs,fmt='%1.3f')
+
+# function
+def get_cascade_sm(y_preds,IN_DIR):
+    child_to_siblings = pickle.load(open(os.path.join(IN_DIR,'child_to_siblings.pkl'),'rb'))
+    parent_to_child = pickle.load(open(os.path.join(IN_DIR,'parent_to_child.pkl'),'rb'))
+    cascade_sm = [softmax(y_preds[0],axis=1)]
+    for i in range(len(y_preds)-1):
+        data = []
+        row_ind = []
+        col_ind = []
+        sms = cascade_sm[-1]
+        for key,val in parent_to_child[i].items():
+            child_sm = softmax(y_preds[i+1][:,val],axis=1)
+            data.append(np.multiply(child_sm,sms[:,key,np.newaxis]).reshape(-1))
+            row_ind.append(np.repeat(np.arange(sms.shape[0]),len(val)))
+            col_ind.append(np.tile(val,sms.shape[0]))
+        data = np.concatenate(data)
+        row_ind = np.concatenate(row_ind)
+        col_ind = np.concatenate(col_ind)
+        cascade_sm.append(sp.csr_matrix((data,(row_ind,col_ind))).toarray())
+    return cascade_sm
