@@ -82,7 +82,7 @@ if args.gpu:
 # # MAIN
 
 
-
+pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))
 
 # inputs
 if args.model == 'bert':
@@ -150,6 +150,22 @@ model.fit(x_trains, y_trains,
           callbacks = callbacks,
           shuffle = True,
          )
+# # save things
+
+if args.save_weights:
+    model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
+if args.save_model:
+    with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
+        f.write(model.to_json())
+if args.save_prediction:
+    if args.model == 'bert':
+        _,_,x_tests,y_tests = get_bert_input(IN_DIR,args.mode)
+    else:
+        _,_,x_tests,y_tests = get_input(IN_DIR,args.mode,get_output = [0,0,1,1])
+    if args.loss == 'masked_categorical':
+        save_hs_predictions(model,x_tests,y_tests,OUT_DIR,IN_DIR)
+    else:
+        save_predictions(model,x_tests,y_tests,OUT_DIR)
 # evaluate
 if args.val:
     print(Coloured("EVALUATE"))
@@ -165,20 +181,5 @@ if args.val:
     df = pd.read_csv(csv_log_dir)
     df = df.append(dd,ignore_index=True)
     df.to_csv(csv_log_dir,index = False)
-
-# # save things
-
-if args.save_weights:
-    model.save_weights(os.path.join(OUT_DIR,'weights.h5'))
-if args.save_model:
-    with open(os.path.join(OUT_DIR,'model.json'),'w') as f:
-        f.write(model.to_json())
-if args.save_prediction:
-    if args.model == 'masked_categorical':
-        save_hs_predictions(model,x_test,y_tests,out_dir,IN_DIR)
-    else:
-        save_predictions(model,x_tests,y_tests,OUT_DIR)
-pd.DataFrame.from_dict([vars(args)]).to_csv(os.path.join(OUT_DIR,'args.csv'))
-
 # close Session
 sess.close()
